@@ -1,10 +1,11 @@
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from typing import Any
 
 from pydantic import ValidationError
 
 from app.tools.base import CitizenTool, ToolDefinition, ValidatedToolCall
 from app.tools.calculator import AddAmountsTool
+from app.tools.official_search import OfficialSearchProvider, OfficialSearchTool
 
 
 class ToolValidationError(ValueError):
@@ -27,7 +28,7 @@ class ToolRegistry:
             self._tools[tool.name] = tool
 
     def definitions(self) -> list[ToolDefinition]:
-        return [self._tools[name].definition() for name in sorted(self._tools)]
+        return [tool.definition() for tool in self._tools.values()]
 
     def validate_call(
         self,
@@ -70,5 +71,17 @@ class ToolRegistry:
         return tool
 
 
-def build_tool_registry() -> ToolRegistry:
-    return ToolRegistry([AddAmountsTool()])
+def build_tool_registry(
+    *,
+    official_search_provider: OfficialSearchProvider | None = None,
+    official_domain_suffixes: Sequence[str] = (".gov.in", ".nic.in"),
+) -> ToolRegistry:
+    tools: list[CitizenTool] = [AddAmountsTool()]
+    if official_search_provider is not None:
+        tools.append(
+            OfficialSearchTool(
+                official_search_provider,
+                allowed_domain_suffixes=official_domain_suffixes,
+            )
+        )
+    return ToolRegistry(tools)

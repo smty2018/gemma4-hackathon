@@ -8,6 +8,12 @@ from app.tools.executor import (
     ToolExecutor,
     ToolProposal,
 )
+from app.tools.official_search import (
+    OfficialSearchArguments,
+    OfficialSearchHit,
+    OfficialSearchProvider,
+    OfficialSearchTool,
+)
 from app.tools.planner import (
     ToolDecision,
     ToolPlanner,
@@ -31,5 +37,9 @@ __all__ = [
     "ToolValidationError",
     "ValidatedToolCall",
     "ProposalStatus",
+    "OfficialSearchArguments",
+    "OfficialSearchHit",
+    "OfficialSearchProvider",
+    "OfficialSearchTool",
     "build_tool_registry",
 ]
