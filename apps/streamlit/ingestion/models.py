@@ -51,6 +51,15 @@ class PdfPreview:
     truncated: bool
 
 
+@dataclass(frozen=True)
+class AudioPreview:
+    content: bytes
+    content_type: str
+    duration_seconds: float
+    sample_rate: int | None
+    channels: int | None
+
+
 class UploadValidationError(ValueError):
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
