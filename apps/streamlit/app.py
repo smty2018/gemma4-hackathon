@@ -1,7 +1,11 @@
-from pathlib import Path
-
 import streamlit as st
 
+from ingestion import (
+    IngestionResult,
+    PreviewGenerationError,
+    UploadValidationError,
+    ingest_upload,
+)
 from session_memory import (
     activate_document,
     add_message,
@@ -12,6 +16,17 @@ from session_memory import (
     upload_widget_key,
 )
 from ui_config import LANGUAGES, style_instruction, style_labels
+
+
+@st.cache_data(show_spinner=False, max_entries=8)
+def cached_ingestion(
+    filename: str, content_type: str | None, content: bytes
+) -> IngestionResult:
+    return ingest_upload(
+        filename=filename,
+        content_type=content_type,
+        content=content,
+    )
 
 
 def render_sidebar() -> tuple[str, str]:
@@ -64,32 +79,87 @@ def render_sidebar() -> tuple[str, str]:
 def render_upload_area() -> None:
     st.subheader("1. Add a document")
     uploaded_file = st.file_uploader(
-        "Upload an image or PDF",
-        type=("png", "jpg", "jpeg", "pdf"),
+        "Upload an image, PDF, or audio recording",
+        type=("png", "jpg", "jpeg", "pdf", "wav", "mp3", "m4a"),
         key=upload_widget_key(st.session_state),
-        help="Supported formats: PNG, JPG, JPEG, and PDF. Maximum size: 20 MB.",
+        help=(
+            "PNG/JPEG up to 10 MB, PDF up to 20 MB, "
+            "or WAV/MP3/M4A up to 15 MB and 60 seconds."
+        ),
     )
 
     if uploaded_file is None:
         if st.session_state.active_document is not None:
             clear_active_document(st.session_state)
-        st.info("Choose a clear photo or PDF to begin.", icon="📄")
+        st.info("Choose a clear image, PDF, or short audio recording to begin.", icon="📄")
         return
 
     content = uploaded_file.getvalue()
+    try:
+        with st.spinner("Validating file and preparing preview…"):
+            result = cached_ingestion(
+                uploaded_file.name,
+                uploaded_file.type,
+                content,
+            )
+    except (UploadValidationError, PreviewGenerationError) as error:
+        clear_active_document(st.session_state)
+        st.error(str(error), icon="⚠️")
+        return
+
     activate_document(
         st.session_state,
-        filename=uploaded_file.name,
-        content_type=uploaded_file.type,
+        filename=result.descriptor.filename,
+        content_type=result.descriptor.content_type,
         content=content,
     )
 
-    st.success(f"Ready: {uploaded_file.name}", icon="✅")
-    suffix = Path(uploaded_file.name).suffix.lower()
-    if suffix in {".png", ".jpg", ".jpeg"}:
-        st.image(uploaded_file, caption="Document preview", width="stretch")
-    else:
-        st.caption(f"PDF selected · {format_file_size(len(content))}")
+    st.success(f"Ready: {result.descriptor.filename}", icon="✅")
+    st.caption(
+        f"{result.descriptor.kind.value.title()} · "
+        f"{format_file_size(result.descriptor.size_bytes)}"
+    )
+    render_file_preview(result)
+
+
+def render_file_preview(result: IngestionResult) -> None:
+    if result.image_preview:
+        preview = result.image_preview
+        st.image(
+            preview.content,
+            caption=(
+                f"Image preview · {preview.source_width}×{preview.source_height} source · "
+                f"{preview.width}×{preview.height} preview"
+            ),
+            width="stretch",
+        )
+        return
+
+    if result.pdf_preview:
+        preview = result.pdf_preview
+        shown_pages = len(preview.pages)
+        suffix = " · additional pages not shown" if preview.truncated else ""
+        st.caption(f"{preview.page_count} pages · previewing {shown_pages}{suffix}")
+        columns = st.columns(2)
+        for index, page in enumerate(preview.pages):
+            with columns[index % len(columns)]:
+                st.image(
+                    page.content,
+                    caption=f"Page {page.page_number}",
+                    width="stretch",
+                )
+        return
+
+    if result.audio_preview:
+        preview = result.audio_preview
+        st.audio(preview.content, format=preview.content_type)
+        details = [f"{preview.duration_seconds:.1f} seconds"]
+        if preview.sample_rate:
+            details.append(f"{preview.sample_rate:,} Hz")
+        if preview.channels:
+            label = "channel" if preview.channels == 1 else "channels"
+            details.append(f"{preview.channels} {label}")
+        st.caption(" · ".join(details))
 
 
 def render_extracted_facts() -> None:
@@ -170,7 +240,8 @@ def main() -> None:
             "- Government notices\n"
             "- Electricity or property bills\n"
             "- Bank and insurance letters\n"
-            "- Prescriptions and acknowledgements"
+            "- Prescriptions and acknowledgements\n"
+            "- Short voice questions"
         )
         st.warning(
             "Do not upload passwords, OTPs, or documents you do not have permission to use.",

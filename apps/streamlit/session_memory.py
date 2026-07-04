@@ -4,7 +4,7 @@ from typing import Any, MutableMapping, TypedDict
 
 
 WELCOME_MESSAGE = (
-    "Upload an image or PDF, then ask what it means. "
+    "Upload an image, PDF, or audio recording, then ask what it means. "
     "Document understanding will be connected in the next feature step."
 )
 

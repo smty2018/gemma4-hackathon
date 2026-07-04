@@ -60,6 +60,14 @@ class AudioPreview:
     channels: int | None
 
 
+@dataclass(frozen=True)
+class IngestionResult:
+    descriptor: FileDescriptor
+    image_preview: PreviewImage | None = None
+    pdf_preview: PdfPreview | None = None
+    audio_preview: AudioPreview | None = None
+
+
 class UploadValidationError(ValueError):
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)

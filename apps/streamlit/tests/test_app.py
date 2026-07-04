@@ -1,9 +1,30 @@
+from io import BytesIO
 from pathlib import Path
+import wave
 
+import pymupdf
 from streamlit.testing.v1 import AppTest
 
 
 APP_FILE = Path(__file__).parents[1] / "app.py"
+
+
+def pdf_bytes() -> bytes:
+    document = pymupdf.open()
+    document.new_page(width=300, height=400).insert_text((30, 40), "Notice")
+    content = document.tobytes()
+    document.close()
+    return content
+
+
+def wav_bytes() -> bytes:
+    output = BytesIO()
+    with wave.open(output, "wb") as recording:
+        recording.setnchannels(1)
+        recording.setsampwidth(2)
+        recording.setframerate(8_000)
+        recording.writeframes(b"\x00\x00" * 4_000)
+    return output.getvalue()
 
 
 def load_app() -> AppTest:
@@ -20,7 +41,7 @@ def test_shell_renders_required_controls() -> None:
         "Explanation style",
     ]
     assert len(app.file_uploader) == 1
-    assert app.file_uploader[0].label == "Upload an image or PDF"
+    assert app.file_uploader[0].label == "Upload an image, PDF, or audio recording"
     assert len(app.chat_input) == 1
     assert app.button[0].label == "Reset session"
     assert app.session_state["active_document"] is None
@@ -44,22 +65,23 @@ def test_pdf_upload_shows_ready_state() -> None:
     app = load_app()
     app.file_uploader[0].upload(
         "notice.pdf",
-        b"%PDF-1.4\n% minimal test document",
+        pdf_bytes(),
         "application/pdf",
     ).run()
 
     assert not app.exception
     assert app.success[0].value == "Ready: notice.pdf"
-    assert any("PDF selected" in caption.value for caption in app.caption)
+    assert any("Pdf" in caption.value for caption in app.caption)
     assert app.session_state["active_document"]["filename"] == "notice.pdf"
     assert app.session_state["active_document"]["content_type"] == "application/pdf"
+    assert any("1 pages" in caption.value for caption in app.caption)
 
 
 def test_extracted_facts_render_from_session_memory() -> None:
     app = load_app()
     app.file_uploader[0].upload(
         "bill.pdf",
-        b"%PDF-1.4\n% bill",
+        pdf_bytes(),
         "application/pdf",
     ).run()
     app.session_state["extracted_facts"] = [
@@ -81,7 +103,7 @@ def test_reset_button_clears_document_facts_and_chat() -> None:
     app = load_app()
     app.file_uploader[0].upload(
         "bill.pdf",
-        b"%PDF-1.4\n% bill",
+        pdf_bytes(),
         "application/pdf",
     ).run()
     app.session_state["extracted_facts"] = [
@@ -95,3 +117,28 @@ def test_reset_button_clears_document_facts_and_chat() -> None:
     assert app.session_state["extracted_facts"] == []
     assert len(app.session_state["messages"]) == 1
     assert app.file_uploader[0].value is None
+
+
+def test_invalid_file_does_not_become_active_document() -> None:
+    app = load_app()
+    app.file_uploader[0].upload(
+        "fake.pdf",
+        b"not a pdf",
+        "application/pdf",
+    ).run()
+
+    assert app.session_state["active_document"] is None
+    assert any("do not match" in error.value for error in app.error)
+
+
+def test_audio_upload_renders_playback_metadata() -> None:
+    app = load_app()
+    app.file_uploader[0].upload(
+        "question.wav",
+        wav_bytes(),
+        "audio/wav",
+    ).run()
+
+    assert not app.exception
+    assert app.session_state["active_document"]["content_type"] == "audio/wav"
+    assert any("0.5 seconds" in caption.value for caption in app.caption)
