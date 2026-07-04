@@ -18,6 +18,10 @@ class ToolRegistry:
     def __init__(self, tools: Iterable[CitizenTool]) -> None:
         self._tools: dict[str, CitizenTool] = {}
         for tool in tools:
+            if tool.creates_external_side_effect and not tool.requires_confirmation:
+                raise ValueError(
+                    f"Side-effecting tool '{tool.name}' must require confirmation"
+                )
             if tool.name in self._tools:
                 raise ValueError(f"Duplicate tool name: {tool.name}")
             self._tools[tool.name] = tool
