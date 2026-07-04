@@ -2,20 +2,16 @@ from pathlib import Path
 
 import streamlit as st
 
-from ui_config import LANGUAGES, style_instruction, style_labels
-
-
-WELCOME_MESSAGE = (
-    "Upload an image or PDF, then ask what it means. "
-    "Document understanding will be connected in the next feature step."
+from session_memory import (
+    activate_document,
+    add_message,
+    clear_active_document,
+    format_file_size,
+    initialize_memory,
+    reset_memory,
+    upload_widget_key,
 )
-
-
-def initialize_session() -> None:
-    if "messages" not in st.session_state:
-        st.session_state.messages = [
-            {"role": "assistant", "content": WELCOME_MESSAGE},
-        ]
+from ui_config import LANGUAGES, style_instruction, style_labels
 
 
 def render_sidebar() -> tuple[str, str]:
@@ -35,6 +31,32 @@ def render_sidebar() -> tuple[str, str]:
         )
         st.caption(style_instruction(explanation_style))
         st.divider()
+
+        st.subheader("Current session")
+        active_document = st.session_state.active_document
+        if active_document:
+            st.markdown(f"**{active_document['filename']}**")
+            st.caption(
+                f"{active_document['content_type']} · "
+                f"{format_file_size(active_document['size_bytes'])}"
+            )
+            st.caption(
+                f"{len(st.session_state.extracted_facts)} extracted facts · "
+                f"{len(st.session_state.messages)} messages"
+            )
+        else:
+            st.caption("No active document")
+
+        if st.button(
+            "Reset session",
+            key="reset_session",
+            use_container_width=True,
+            help="Clear the active document, extracted facts, and conversation.",
+        ):
+            reset_memory(st.session_state)
+            st.rerun()
+
+        st.divider()
         st.caption("Files are held only for the current session in this UI shell.")
     return language, explanation_style
 
@@ -44,21 +66,63 @@ def render_upload_area() -> None:
     uploaded_file = st.file_uploader(
         "Upload an image or PDF",
         type=("png", "jpg", "jpeg", "pdf"),
-        key="document_upload",
+        key=upload_widget_key(st.session_state),
         help="Supported formats: PNG, JPG, JPEG, and PDF. Maximum size: 20 MB.",
     )
 
     if uploaded_file is None:
+        if st.session_state.active_document is not None:
+            clear_active_document(st.session_state)
         st.info("Choose a clear photo or PDF to begin.", icon="📄")
         return
+
+    content = uploaded_file.getvalue()
+    activate_document(
+        st.session_state,
+        filename=uploaded_file.name,
+        content_type=uploaded_file.type,
+        content=content,
+    )
 
     st.success(f"Ready: {uploaded_file.name}", icon="✅")
     suffix = Path(uploaded_file.name).suffix.lower()
     if suffix in {".png", ".jpg", ".jpeg"}:
         st.image(uploaded_file, caption="Document preview", width="stretch")
     else:
-        size_kb = len(uploaded_file.getvalue()) / 1024
-        st.caption(f"PDF selected · {size_kb:.1f} KB")
+        st.caption(f"PDF selected · {format_file_size(len(content))}")
+
+
+def render_extracted_facts() -> None:
+    st.subheader("Session memory")
+    active_document = st.session_state.active_document
+    facts = st.session_state.extracted_facts
+
+    if active_document is None:
+        st.caption("Active document: none")
+        st.info("Upload a document to create document-scoped memory.")
+        return
+
+    document_column, fact_column, message_column = st.columns(3)
+    document_column.metric("Active document", active_document["filename"])
+    fact_column.metric("Extracted facts", len(facts))
+    message_column.metric("Messages", len(st.session_state.messages))
+
+    st.markdown("#### Extracted facts")
+    if not facts:
+        st.info("No facts extracted yet. OCR and document analysis are the next feature step.")
+        return
+
+    for fact in facts:
+        st.markdown(f"**{fact['label']}:** {fact['value']}")
+        details: list[str] = []
+        if fact.get("page") is not None:
+            details.append(f"page {fact['page']}")
+        if fact.get("confidence") is not None:
+            details.append(f"{fact['confidence']:.0%} confidence")
+        if fact.get("evidence"):
+            details.append(f"evidence: {fact['evidence']}")
+        if details:
+            st.caption(" · ".join(details))
 
 
 def render_chat(language: str, explanation_style: str) -> None:
@@ -72,12 +136,12 @@ def render_chat(language: str, explanation_style: str) -> None:
     if not prompt:
         return
 
-    st.session_state.messages.append({"role": "user", "content": prompt})
+    add_message(st.session_state, "user", prompt)
     response = (
         f"Your question is queued for a {explanation_style.lower()} response "
         f"in {language}. Gemma integration is the next implementation step."
     )
-    st.session_state.messages.append({"role": "assistant", "content": response})
+    add_message(st.session_state, "assistant", response)
     st.rerun()
 
 
@@ -88,7 +152,7 @@ def main() -> None:
         layout="wide",
         initial_sidebar_state="expanded",
     )
-    initialize_session()
+    initialize_memory(st.session_state)
     language, explanation_style = render_sidebar()
 
     st.title("Understand your document")
@@ -113,6 +177,8 @@ def main() -> None:
             icon="🔒",
         )
 
+    st.divider()
+    render_extracted_facts()
     st.divider()
     render_chat(language, explanation_style)
 
