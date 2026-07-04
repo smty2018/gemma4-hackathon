@@ -9,12 +9,22 @@ description = "Multilingual document-understanding and assistance API"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115,<1",
+    "jsonschema>=4.23,<5",
     "pydantic-settings>=2.7,<3",
     "python-multipart>=0.0.20,<1",
     "uvicorn[standard]>=0.34,<1",
 ]
 
 [project.optional-dependencies]
+gemma = [
+    "accelerate>=1.9,<2",
+    "pillow>=11,<13",
+    "sentencepiece>=0.2,<1",
+    "soundfile>=0.13,<1",
+    "torch>=2.7,<3",
+    "torchaudio>=2.7,<3",
+    "transformers>=4.53,<5",
+]
 dev = [
     "httpx>=0.28,<1",
     "pytest>=8.3,<9",

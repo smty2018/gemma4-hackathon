@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     )
 
     environment: str = "development"
-    model_id: str = "google/gemma-4-12B-it"
+    model_id: str = "google/gemma-3n-E4B-it"
     allowed_origins_csv: str = "http://localhost:3000"
     max_upload_mb: int = 15
 
