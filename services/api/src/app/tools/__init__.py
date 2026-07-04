@@ -8,14 +8,24 @@ from app.tools.executor import (
     ToolExecutor,
     ToolProposal,
 )
+from app.tools.planner import (
+    ToolDecision,
+    ToolPlanner,
+    ToolPlanningError,
+    ToolPlanningRequest,
+)
 from app.tools.registry import ToolRegistry, ToolValidationError, build_tool_registry
 
 __all__ = [
     "ToolDefinition",
+    "ToolDecision",
     "ToolExecutionError",
     "ToolExecutionReceipt",
     "ToolExecutor",
     "ToolProposal",
+    "ToolPlanner",
+    "ToolPlanningError",
+    "ToolPlanningRequest",
     "ToolRegistry",
     "ToolResult",
     "ToolValidationError",
