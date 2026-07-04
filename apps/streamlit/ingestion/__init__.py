@@ -5,13 +5,16 @@ from ingestion.models import (
     FileDescriptor,
     FileKind,
     IngestionResult,
+    PdfContent,
     PdfPagePreview,
+    PdfPageText,
     PdfPreview,
     PreviewGenerationError,
     PreviewImage,
     UploadValidationError,
 )
 from ingestion.pdf import generate_pdf_previews
+from ingestion.pdf_processing import process_pdf_content
 from ingestion.pipeline import ingest_upload
 from ingestion.validation import validate_upload
 
@@ -20,7 +23,9 @@ __all__ = [
     "FileDescriptor",
     "FileKind",
     "IngestionResult",
+    "PdfContent",
     "PdfPagePreview",
+    "PdfPageText",
     "PdfPreview",
     "PreviewGenerationError",
     "PreviewImage",
@@ -29,5 +34,6 @@ __all__ = [
     "generate_pdf_previews",
     "inspect_audio",
     "ingest_upload",
+    "process_pdf_content",
     "validate_upload",
 ]

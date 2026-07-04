@@ -52,6 +52,38 @@ class PdfPreview:
 
 
 @dataclass(frozen=True)
+class PdfPageText:
+    page_number: int
+    text: str
+    character_count: int
+    has_embedded_text: bool
+    truncated: bool
+
+
+@dataclass(frozen=True)
+class PdfContent:
+    page_count: int
+    pages: tuple[PdfPageText, ...]
+    scanned_page_numbers: tuple[int, ...]
+    scanned_pages: tuple[PdfPagePreview, ...]
+    scanned_previews_truncated: bool
+    text_truncated: bool
+
+    @property
+    def embedded_text(self) -> str:
+        sections = (
+            f"Page {page.page_number}\n{page.text}"
+            for page in self.pages
+            if page.has_embedded_text and page.text
+        )
+        return "\n\n".join(sections)
+
+    @property
+    def text_page_count(self) -> int:
+        return sum(page.has_embedded_text for page in self.pages)
+
+
+@dataclass(frozen=True)
 class AudioPreview:
     content: bytes
     content_type: str
