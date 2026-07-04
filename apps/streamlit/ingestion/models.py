@@ -36,6 +36,21 @@ class PreviewImage:
     format: str = "PNG"
 
 
+@dataclass(frozen=True)
+class PdfPagePreview:
+    page_number: int
+    content: bytes
+    width: int
+    height: int
+
+
+@dataclass(frozen=True)
+class PdfPreview:
+    page_count: int
+    pages: tuple[PdfPagePreview, ...]
+    truncated: bool
+
+
 class UploadValidationError(ValueError):
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
