@@ -1,0 +1,13 @@
+{
+  "name": "gemma4-hackathon",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm --workspace @project/web run dev",
+    "build:web": "npm --workspace @project/web run build",
+    "lint:web": "npm --workspace @project/web run lint"
+  }
+}

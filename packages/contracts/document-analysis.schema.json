@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://project.local/schemas/document-analysis.schema.json",
+  "title": "DocumentAnalysis",
+  "type": "object",
+  "required": ["documentType", "summary", "facts", "warnings", "proposedActions"],
+  "properties": {
+    "documentType": { "type": "string" },
+    "summary": { "type": "string" },
+    "facts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["label", "value", "evidenceText", "confidence"],
+        "properties": {
+          "label": { "type": "string" },
+          "value": { "type": "string" },
+          "page": { "type": ["integer", "null"], "minimum": 1 },
+          "evidenceText": { "type": "string" },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+        },
+        "additionalProperties": false
+      }
+    },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "proposedActions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["tool", "description", "requiresConfirmation"],
+        "properties": {
+          "tool": { "type": "string" },
+          "description": { "type": "string" },
+          "requiresConfirmation": { "const": true }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
