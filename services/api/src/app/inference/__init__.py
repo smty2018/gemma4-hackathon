@@ -8,6 +8,9 @@ from app.inference.gemma import (
     GemmaRequest,
     GemmaResponse,
     GemmaResponseError,
+    GemmaRuntimeOutput,
+    GemmaToolCall,
+    TransformersGemma4Runtime,
 )
 
 __all__ = [
@@ -20,4 +23,7 @@ __all__ = [
     "GemmaRequest",
     "GemmaResponse",
     "GemmaResponseError",
+    "GemmaRuntimeOutput",
+    "GemmaToolCall",
+    "TransformersGemma4Runtime",
 ]

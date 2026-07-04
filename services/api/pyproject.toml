@@ -18,12 +18,14 @@ dependencies = [
 [project.optional-dependencies]
 gemma = [
     "accelerate>=1.9,<2",
+    "librosa>=0.11,<1",
     "pillow>=11,<13",
     "sentencepiece>=0.2,<1",
     "soundfile>=0.13,<1",
     "torch>=2.7,<3",
     "torchaudio>=2.7,<3",
-    "transformers>=4.53,<5",
+    "torchvision>=0.22,<1",
+    "transformers>=5.10.1,<6",
 ]
 dev = [
     "httpx>=0.28,<1",

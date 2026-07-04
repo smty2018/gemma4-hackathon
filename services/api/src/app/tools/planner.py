@@ -2,7 +2,7 @@ import json
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.inference.gemma import GemmaAdapterError, GemmaRequest, GemmaResponse
 from app.tools.executor import ToolExecutionError, ToolExecutor, ToolProposal
@@ -46,23 +46,6 @@ class GemmaGenerator(Protocol):
     def generate(self, request: GemmaRequest) -> GemmaResponse: ...
 
 
-class _ToolSelectionPayload(BaseModel):
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
-
-    call_tool: bool
-    tool_name: str | None = Field(default=None, max_length=64)
-    arguments: dict[str, Any] = Field(default_factory=dict)
-    reason: str = Field(min_length=1, max_length=500)
-
-    @model_validator(mode="after")
-    def selection_must_be_consistent(self) -> "_ToolSelectionPayload":
-        if self.call_tool and not self.tool_name:
-            raise ValueError("tool_name is required when call_tool is true")
-        if not self.call_tool and (self.tool_name is not None or self.arguments):
-            raise ValueError("no tool or arguments are allowed when call_tool is false")
-        return self
-
-
 class ToolPlanner:
     def __init__(
         self,
@@ -77,8 +60,9 @@ class ToolPlanner:
 
     def plan(self, request: ToolPlanningRequest) -> ToolDecision:
         actor_id, user_request, context, language = _validate_request(request)
+        gemma_tools = [_gemma_tool_schema(item) for item in self._registry.definitions()]
         definitions_json = json.dumps(
-            [definition.model_dump(mode="json") for definition in self._registry.definitions()],
+            gemma_tools,
             ensure_ascii=False,
             separators=(",", ":"),
         )
@@ -92,41 +76,41 @@ class ToolPlanner:
             user_request=user_request,
             context=context,
             language=language,
-            definitions_json=definitions_json,
         )
 
         try:
             response = self._gemma.generate(
                 GemmaRequest(
                     prompt=prompt,
-                    response_schema=_ToolSelectionPayload,
+                    tools=gemma_tools,
                     system_instruction=SYSTEM_INSTRUCTION,
                     max_new_tokens=512,
                     temperature=0,
+                    enable_thinking=True,
                 )
             )
-            if response.structured is None:
-                raise ValueError("Structured tool selection is missing")
-            selection = _ToolSelectionPayload.model_validate(response.structured)
         except GemmaAdapterError as error:
             raise ToolPlanningError(
                 "tool_planning_inference_failed",
                 "A tool decision could not be generated.",
                 retryable=error.retryable,
             ) from error
-        except (TypeError, ValueError, ValidationError) as error:
+        if len(response.tool_calls) > 1:
             raise ToolPlanningError(
                 "tool_planning_response_invalid",
-                "The generated tool decision was invalid.",
+                "Gemma selected more than one tool for a single-step proposal.",
                 retryable=True,
-            ) from error
+            )
+        if not response.tool_calls:
+            return ToolDecision(
+                reason=_decision_reason(response.text, "No tool is needed for this request.")
+            )
 
-        if not selection.call_tool:
-            return ToolDecision(reason=selection.reason)
+        selection = response.tool_calls[0]
 
         try:
             validated_call = self._registry.validate_call(
-                tool_name=selection.tool_name or "",
+                tool_name=selection.name,
                 arguments=selection.arguments,
             )
             proposal = self._executor.prepare(
@@ -147,7 +131,13 @@ class ToolPlanner:
                 retryable=error.retryable,
             ) from error
 
-        return ToolDecision(reason=selection.reason, proposal=proposal)
+        return ToolDecision(
+            reason=_decision_reason(
+                response.text,
+                f"Gemma selected the {selection.name} tool.",
+            ),
+            proposal=proposal,
+        )
 
 
 def _validate_request(
@@ -186,16 +176,12 @@ def _build_prompt(
     user_request: str,
     context: str,
     language: str,
-    definitions_json: str,
 ) -> str:
     context_section = context if context else "No additional context supplied."
     return (
-        "Choose at most one tool from the allow-list below. Return call_tool=false when no "
-        "tool is needed or required arguments are missing. Give a short reason in "
+        "Choose at most one of the provided native functions. Do not call a function when no "
+        "tool is needed or required arguments are missing. Give any final explanation in "
         f"{language}. Copy argument values exactly from the request or context.\n"
-        "<allowed_tools>\n"
-        f"{definitions_json}\n"
-        "</allowed_tools>\n"
         "<user_request>\n"
         f"{user_request}\n"
         "</user_request>\n"
@@ -203,3 +189,19 @@ def _build_prompt(
         f"{context_section}\n"
         "</context>"
     )
+
+
+def _gemma_tool_schema(definition: Any) -> dict[str, Any]:
+    return {
+        "type": "function",
+        "function": {
+            "name": definition.name,
+            "description": definition.description,
+            "parameters": definition.input_schema,
+        },
+    }
+
+
+def _decision_reason(text: str, fallback: str) -> str:
+    reason = text.strip() or fallback
+    return reason[:500]

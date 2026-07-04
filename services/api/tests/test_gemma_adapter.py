@@ -1,4 +1,6 @@
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -12,12 +14,15 @@ from app.inference.gemma import (
     GemmaLoadError,
     GemmaRequest,
     GemmaResponseError,
+    GemmaRuntimeOutput,
+    GemmaToolCall,
+    TransformersGemma4Runtime,
 )
 
 
 class RecordingRuntime:
     def __init__(self, response: str = "A clear answer") -> None:
-        self.response = response
+        self.output = GemmaRuntimeOutput(text=response)
         self.calls: list[dict[str, Any]] = []
         self.error: Exception | None = None
 
@@ -25,19 +30,23 @@ class RecordingRuntime:
         self,
         *,
         messages: list[dict[str, Any]],
+        tools: tuple[dict[str, Any], ...],
         max_new_tokens: int,
         temperature: float,
-    ) -> str:
+        enable_thinking: bool,
+    ) -> GemmaRuntimeOutput:
         self.calls.append(
             {
                 "messages": messages,
+                "tools": tools,
                 "max_new_tokens": max_new_tokens,
                 "temperature": temperature,
+                "enable_thinking": enable_thinking,
             }
         )
         if self.error:
             raise self.error
-        return self.response
+        return self.output
 
 
 class ExtractedAmount(BaseModel):
@@ -62,7 +71,7 @@ def test_text_generation_uses_e4b_by_default() -> None:
     )
 
     assert response.text == "Pay before Friday."
-    assert response.model_id == DEFAULT_MODEL_ID == "google/gemma-3n-E4B-it"
+    assert response.model_id == DEFAULT_MODEL_ID == "google/gemma-4-E4B-it"
     assert response.structured is None
     assert runtime.calls[0]["max_new_tokens"] == 128
     assert runtime.calls[0]["temperature"] == 0.3
@@ -99,8 +108,8 @@ def test_one_request_supports_images_audio_and_text() -> None:
     }
     assert content[1] == {"type": "image", "path": "local-scan.png"}
     assert content[2] == {"type": "image", "image": image_object}
-    assert content[3] == {"type": "audio", "audio": audio_object}
-    assert content[4]["type"] == "text"
+    assert content[3]["type"] == "text"
+    assert content[4] == {"type": "audio", "audio": audio_object}
 
 
 def test_system_instruction_uses_the_supported_system_role() -> None:
@@ -119,6 +128,43 @@ def test_system_instruction_uses_the_supported_system_role() -> None:
         "content": [{"type": "text", "text": "Use plain language."}],
     }
     assert runtime.calls[0]["messages"][1]["role"] == "user"
+
+
+def test_native_tool_schemas_and_thinking_are_forwarded() -> None:
+    runtime = RecordingRuntime("")
+    runtime.output = GemmaRuntimeOutput(
+        thinking="Use the calculator.",
+        tool_calls=(
+            GemmaToolCall(name="add_amounts", arguments={"amounts": [1, 2]}),
+        ),
+    )
+    adapter = adapter_for(runtime)
+    tool_schema = {
+        "type": "function",
+        "function": {
+            "name": "add_amounts",
+            "description": "Add values.",
+            "parameters": {
+                "type": "object",
+                "properties": {"amounts": {"type": "array"}},
+                "required": ["amounts"],
+            },
+        },
+    }
+
+    response = adapter.generate(
+        GemmaRequest(
+            prompt="Add 1 and 2.",
+            tools=(tool_schema,),
+            enable_thinking=True,
+        )
+    )
+
+    assert response.text == ""
+    assert response.thinking == "Use the calculator."
+    assert response.tool_calls[0].name == "add_amounts"
+    assert runtime.calls[0]["tools"] == (tool_schema,)
+    assert runtime.calls[0]["enable_thinking"] is True
 
 
 def test_pydantic_schema_is_prompted_parsed_and_validated() -> None:
@@ -178,6 +224,26 @@ def test_json_schema_accepts_fenced_json_but_still_validates_it() -> None:
         (
             GemmaRequest(prompt="hello", temperature=2.1),
             "invalid_temperature",
+        ),
+        (
+            GemmaRequest(
+                prompt="hello",
+                response_schema=ExtractedAmount,
+                tools=(
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "test",
+                            "parameters": {"type": "object"},
+                        },
+                    },
+                ),
+            ),
+            "conflicting_response_modes",
+        ),
+        (
+            GemmaRequest(prompt="hello", tools=({"type": "invalid"},)),
+            "invalid_tool_schema",
         ),
         (
             GemmaRequest(prompt="hello", response_schema={"type": "unknown"}),
@@ -256,3 +322,105 @@ def test_runtime_is_loaded_once_and_reused() -> None:
 
     assert factory_calls == [DEFAULT_MODEL_ID]
     assert len(runtime.calls) == 2
+
+
+def test_transformers_runtime_uses_gemma4_multimodal_api_and_parse_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: dict[str, Any] = {}
+
+    class FakeInputs(dict):
+        def to(self, device: str) -> "FakeInputs":
+            calls["inputs_device"] = device
+            return self
+
+    class FakeInputIds:
+        shape = (1, 3)
+
+    class FakeProcessor:
+        @classmethod
+        def from_pretrained(cls, model_id: str) -> "FakeProcessor":
+            calls["processor_model_id"] = model_id
+            return cls()
+
+        def apply_chat_template(self, messages, **kwargs) -> FakeInputs:
+            calls["messages"] = messages
+            calls["template_options"] = kwargs
+            return FakeInputs(input_ids=FakeInputIds())
+
+        def decode(self, tokens, *, skip_special_tokens: bool) -> str:
+            calls["decoded_tokens"] = tokens
+            calls["skip_special_tokens"] = skip_special_tokens
+            return "raw gemma response"
+
+        def parse_response(self, response: str) -> dict[str, Any]:
+            calls["parsed_response"] = response
+            return {
+                "role": "assistant",
+                "thinking": "Need arithmetic.",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "add_amounts",
+                            "arguments": {"amounts": [1, 2]},
+                        },
+                    }
+                ],
+            }
+
+    class FakeModel:
+        device = "cuda:0"
+
+        @classmethod
+        def from_pretrained(cls, model_id: str, **kwargs) -> "FakeModel":
+            calls["model_id"] = model_id
+            calls["model_options"] = kwargs
+            return cls()
+
+        def eval(self) -> "FakeModel":
+            return self
+
+        def generate(self, **kwargs):
+            calls["generation_options"] = kwargs
+            return [[10, 11, 12, 13, 14]]
+
+    monkeypatch.setitem(
+        sys.modules,
+        "transformers",
+        SimpleNamespace(
+            AutoProcessor=FakeProcessor,
+            AutoModelForMultimodalLM=FakeModel,
+        ),
+    )
+    runtime = TransformersGemma4Runtime(DEFAULT_MODEL_ID)
+    tool_schema = {
+        "type": "function",
+        "function": {
+            "name": "add_amounts",
+            "parameters": {"type": "object"},
+        },
+    }
+
+    output = runtime.generate(
+        messages=[{"role": "user", "content": "Add 1 and 2."}],
+        tools=(tool_schema,),
+        max_new_tokens=64,
+        temperature=1.0,
+        enable_thinking=True,
+    )
+
+    assert calls["model_id"] == "google/gemma-4-E4B-it"
+    assert calls["model_options"] == {"device_map": "auto", "dtype": "auto"}
+    assert calls["template_options"]["tools"] == [tool_schema]
+    assert calls["template_options"]["enable_thinking"] is True
+    assert calls["skip_special_tokens"] is False
+    assert calls["parsed_response"] == "raw gemma response"
+    assert output.thinking == "Need arithmetic."
+    assert output.tool_calls == (
+        GemmaToolCall(name="add_amounts", arguments={"amounts": [1, 2]}),
+    )
+    assert calls["generation_options"]["temperature"] == 1.0
+    assert calls["generation_options"]["top_p"] == 0.95
+    assert calls["generation_options"]["top_k"] == 64

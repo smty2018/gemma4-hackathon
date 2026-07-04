@@ -8,6 +8,7 @@ from app.inference.gemma import (
     GemmaInferenceError,
     GemmaRequest,
     GemmaResponse,
+    GemmaToolCall,
 )
 from app.tools.executor import ProposalStatus, ToolExecutor
 from app.tools.planner import (
@@ -21,7 +22,7 @@ from app.tools.registry import build_tool_registry
 
 
 class StubGemma:
-    def __init__(self, responses: Sequence[dict[str, Any] | Exception]) -> None:
+    def __init__(self, responses: Sequence[GemmaResponse | Exception]) -> None:
         self.responses = list(responses)
         self.requests: list[GemmaRequest] = []
 
@@ -30,11 +31,23 @@ class StubGemma:
         response = self.responses.pop(0)
         if isinstance(response, Exception):
             raise response
-        return GemmaResponse(
-            text="structured tool decision",
-            model_id=DEFAULT_MODEL_ID,
-            structured=response,
-        )
+        return response
+
+
+def tool_response(
+    *,
+    name: str | None = None,
+    arguments: dict[str, Any] | None = None,
+    text: str = "",
+) -> GemmaResponse:
+    calls = ()
+    if name is not None:
+        calls = (GemmaToolCall(name=name, arguments=arguments or {}),)
+    return GemmaResponse(
+        model_id=DEFAULT_MODEL_ID,
+        text=text,
+        tool_calls=calls,
+    )
 
 
 def planner_for(gemma: StubGemma) -> ToolPlanner:
@@ -49,12 +62,11 @@ def planner_for(gemma: StubGemma) -> ToolPlanner:
 def test_gemma_selection_becomes_a_validated_proposal_not_execution() -> None:
     gemma = StubGemma(
         [
-            {
-                "call_tool": True,
-                "tool_name": "add_amounts",
-                "arguments": {"amounts": ["10.50", 2]},
-                "reason": "Add the two stated amounts.",
-            }
+            tool_response(
+                name="add_amounts",
+                arguments={"amounts": ["10.50", 2]},
+                text="Add the two stated amounts.",
+            )
         ]
     )
 
@@ -75,23 +87,17 @@ def test_gemma_selection_becomes_a_validated_proposal_not_execution() -> None:
     request = gemma.requests[0]
     assert request.temperature == 0
     assert request.max_new_tokens == 512
-    assert request.response_schema is not None
+    assert request.response_schema is None
+    assert request.enable_thinking is True
     assert request.system_instruction is not None
-    assert '"name":"add_amounts"' in request.prompt
-    assert '"additionalProperties":false' in request.prompt
+    assert request.tools[0]["function"]["name"] == "add_amounts"
+    assert request.tools[0]["function"]["parameters"]["additionalProperties"] is False
     assert "What is 10.50 plus 2?" in request.prompt
 
 
 def test_model_can_decide_no_tool_is_needed() -> None:
     gemma = StubGemma(
-        [
-            {
-                "call_tool": False,
-                "tool_name": None,
-                "arguments": {},
-                "reason": "This only needs a plain-language answer.",
-            }
-        ]
+        [tool_response(text="This only needs a plain-language answer.")]
     )
 
     decision = planner_for(gemma).plan(
@@ -115,14 +121,7 @@ def test_hallucinated_tools_and_invalid_arguments_never_become_proposals(
     arguments: dict[str, Any],
 ) -> None:
     gemma = StubGemma(
-        [
-            {
-                "call_tool": True,
-                "tool_name": tool_name,
-                "arguments": arguments,
-                "reason": "Attempt a tool call.",
-            }
-        ]
+        [tool_response(name=tool_name, arguments=arguments, text="Attempt a tool call.")]
     )
 
     with pytest.raises(ToolPlanningError) as error:
@@ -134,26 +133,16 @@ def test_hallucinated_tools_and_invalid_arguments_never_become_proposals(
     assert error.value.retryable is True
 
 
-@pytest.mark.parametrize(
-    "payload",
-    [
-        {
-            "call_tool": True,
-            "tool_name": None,
-            "arguments": {},
-            "reason": "Missing tool.",
-        },
-        {
-            "call_tool": False,
-            "tool_name": "add_amounts",
-            "arguments": {"amounts": [1]},
-            "reason": "Contradictory output.",
-        },
-    ],
-)
-def test_inconsistent_model_decisions_are_rejected(payload: dict[str, Any]) -> None:
+def test_multiple_native_tool_calls_are_rejected() -> None:
+    response = GemmaResponse(
+        model_id=DEFAULT_MODEL_ID,
+        tool_calls=(
+            GemmaToolCall(name="add_amounts", arguments={"amounts": [1]}),
+            GemmaToolCall(name="add_amounts", arguments={"amounts": [2]}),
+        ),
+    )
     with pytest.raises(ToolPlanningError) as error:
-        planner_for(StubGemma([payload])).plan(
+        planner_for(StubGemma([response])).plan(
             ToolPlanningRequest(actor_id="session-1", user_request="Do this.")
         )
 
