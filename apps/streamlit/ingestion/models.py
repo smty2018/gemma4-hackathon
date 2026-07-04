@@ -26,7 +26,23 @@ class FileDescriptor:
     content_hash: str
 
 
+@dataclass(frozen=True)
+class PreviewImage:
+    content: bytes
+    width: int
+    height: int
+    source_width: int
+    source_height: int
+    format: str = "PNG"
+
+
 class UploadValidationError(ValueError):
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+class PreviewGenerationError(ValueError):
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
         self.code = code
