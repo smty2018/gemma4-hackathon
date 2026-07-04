@@ -34,11 +34,17 @@ def wav_bytes() -> bytes:
 
 
 @pytest.mark.parametrize(
-    ("filename", "content_type", "content_factory", "kind", "preview_field"),
+    ("filename", "content_type", "content_factory", "kind", "artifact_fields"),
     (
-        ("scan.png", "image/png", png_bytes, FileKind.IMAGE, "image_preview"),
-        ("notice.pdf", "application/pdf", pdf_bytes, FileKind.PDF, "pdf_preview"),
-        ("question.wav", "audio/wav", wav_bytes, FileKind.AUDIO, "audio_preview"),
+        ("scan.png", "image/png", png_bytes, FileKind.IMAGE, ("image_preview",)),
+        (
+            "notice.pdf",
+            "application/pdf",
+            pdf_bytes,
+            FileKind.PDF,
+            ("pdf_preview", "pdf_content"),
+        ),
+        ("question.wav", "audio/wav", wav_bytes, FileKind.AUDIO, ("audio_preview",)),
     ),
 )
 def test_pipeline_dispatches_to_expected_preview(
@@ -46,7 +52,7 @@ def test_pipeline_dispatches_to_expected_preview(
     content_type: str,
     content_factory,
     kind: FileKind,
-    preview_field: str,
+    artifact_fields: tuple[str, ...],
 ) -> None:
     result = ingest_upload(
         filename=filename,
@@ -55,13 +61,26 @@ def test_pipeline_dispatches_to_expected_preview(
     )
 
     assert result.descriptor.kind is kind
-    assert getattr(result, preview_field) is not None
-    populated_previews = [
+    assert all(getattr(result, field) is not None for field in artifact_fields)
+    populated_artifacts = [
         result.image_preview is not None,
         result.pdf_preview is not None,
+        result.pdf_content is not None,
         result.audio_preview is not None,
     ]
-    assert sum(populated_previews) == 1
+    assert sum(populated_artifacts) == len(artifact_fields)
+
+
+def test_pdf_pipeline_returns_extracted_text() -> None:
+    result = ingest_upload(
+        filename="notice.pdf",
+        content_type="application/pdf",
+        content=pdf_bytes(),
+    )
+
+    assert result.pdf_content is not None
+    assert result.pdf_content.embedded_text == "Page 1\nNotice"
+    assert result.pdf_content.scanned_page_numbers == ()
 
 
 def test_pipeline_stops_before_preview_for_invalid_upload() -> None:

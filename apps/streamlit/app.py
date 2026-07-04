@@ -18,6 +18,9 @@ from session_memory import (
 from ui_config import LANGUAGES, style_instruction, style_labels
 
 
+TEXT_DISPLAY_CHARACTERS = 10_000
+
+
 @st.cache_data(show_spinner=False, max_entries=8)
 def cached_ingestion(
     filename: str, content_type: str | None, content: bytes
@@ -148,6 +151,7 @@ def render_file_preview(result: IngestionResult) -> None:
                     caption=f"Page {page.page_number}",
                     width="stretch",
                 )
+        render_pdf_content(result)
         return
 
     if result.audio_preview:
@@ -160,6 +164,55 @@ def render_file_preview(result: IngestionResult) -> None:
             label = "channel" if preview.channels == 1 else "channels"
             details.append(f"{preview.channels} {label}")
         st.caption(" · ".join(details))
+
+
+def render_pdf_content(result: IngestionResult) -> None:
+    content = result.pdf_content
+    if content is None:
+        return
+
+    text_page_label = "page" if content.text_page_count == 1 else "pages"
+    scanned_page_count = len(content.scanned_page_numbers)
+    scanned_page_label = "page" if scanned_page_count == 1 else "pages"
+    st.markdown("#### PDF processing")
+    st.caption(
+        f"{content.text_page_count} text {text_page_label} · "
+        f"{scanned_page_count} scanned {scanned_page_label}"
+    )
+
+    if content.embedded_text:
+        displayed_text = content.embedded_text[:TEXT_DISPLAY_CHARACTERS]
+        display_truncated = len(content.embedded_text) > len(displayed_text)
+        st.text_area(
+            "Extracted embedded text",
+            value=displayed_text,
+            height=220,
+            disabled=True,
+        )
+        if content.text_truncated or display_truncated:
+            st.caption("Extracted text is truncated to keep processing responsive.")
+    else:
+        st.info("No embedded text found. Scanned pages are ready for OCR.")
+
+    if not content.scanned_page_numbers:
+        st.caption("No scanned pages detected.")
+        return
+
+    st.markdown("#### Scanned pages prepared for OCR")
+    st.caption(
+        "Detected pages: "
+        + ", ".join(str(page) for page in content.scanned_page_numbers)
+    )
+    columns = st.columns(2)
+    for index, page in enumerate(content.scanned_pages):
+        with columns[index % len(columns)]:
+            st.image(
+                page.content,
+                caption=f"Scanned page {page.page_number}",
+                width="stretch",
+            )
+    if content.scanned_previews_truncated:
+        st.caption("Additional scanned pages were detected but are not rendered here.")
 
 
 def render_extracted_facts() -> None:

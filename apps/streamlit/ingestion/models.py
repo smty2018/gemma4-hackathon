@@ -97,6 +97,7 @@ class IngestionResult:
     descriptor: FileDescriptor
     image_preview: PreviewImage | None = None
     pdf_preview: PdfPreview | None = None
+    pdf_content: PdfContent | None = None
     audio_preview: AudioPreview | None = None
 
 

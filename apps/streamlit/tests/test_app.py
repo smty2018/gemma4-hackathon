@@ -3,6 +3,7 @@ from pathlib import Path
 import wave
 
 import pymupdf
+from PIL import Image
 from streamlit.testing.v1 import AppTest
 
 
@@ -12,6 +13,25 @@ APP_FILE = Path(__file__).parents[1] / "app.py"
 def pdf_bytes() -> bytes:
     document = pymupdf.open()
     document.new_page(width=300, height=400).insert_text((30, 40), "Notice")
+    content = document.tobytes()
+    document.close()
+    return content
+
+
+def mixed_pdf_bytes() -> bytes:
+    image_output = BytesIO()
+    Image.new("RGB", (80, 60), color=(30, 90, 150)).save(
+        image_output,
+        format="PNG",
+    )
+
+    document = pymupdf.open()
+    document.new_page(width=300, height=400).insert_text(
+        (30, 40),
+        "Embedded notice text",
+    )
+    scanned_page = document.new_page(width=300, height=400)
+    scanned_page.insert_image(scanned_page.rect, stream=image_output.getvalue())
     content = document.tobytes()
     document.close()
     return content
@@ -75,6 +95,28 @@ def test_pdf_upload_shows_ready_state() -> None:
     assert app.session_state["active_document"]["filename"] == "notice.pdf"
     assert app.session_state["active_document"]["content_type"] == "application/pdf"
     assert any("1 pages" in caption.value for caption in app.caption)
+    assert any("1 text page" in caption.value for caption in app.caption)
+    assert app.text_area[0].label == "Extracted embedded text"
+    assert "Notice" in app.text_area[0].value
+    assert any("No scanned pages detected" in caption.value for caption in app.caption)
+
+
+def test_mixed_pdf_marks_scanned_pages_for_ocr() -> None:
+    app = load_app()
+    app.file_uploader[0].upload(
+        "mixed.pdf",
+        mixed_pdf_bytes(),
+        "application/pdf",
+    ).run()
+
+    assert not app.exception
+    assert "Embedded notice text" in app.text_area[0].value
+    assert any("1 scanned page" in caption.value for caption in app.caption)
+    assert any("Detected pages: 2" in caption.value for caption in app.caption)
+    assert any(
+        "Scanned pages prepared for OCR" in markdown.value
+        for markdown in app.markdown
+    )
 
 
 def test_extracted_facts_render_from_session_memory() -> None:
