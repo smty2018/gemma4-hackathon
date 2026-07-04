@@ -49,6 +49,18 @@ def test_audio_duration_limit_is_enforced() -> None:
     assert error.value.code == "audio_too_long"
 
 
+def test_audio_at_gemma4_duration_limit_is_accepted() -> None:
+    preview = inspect_audio(
+        wav_bytes(
+            duration_seconds=MAX_AUDIO_DURATION_SECONDS,
+            sample_rate=1_000,
+        ),
+        extension=".wav",
+    )
+
+    assert preview.duration_seconds == pytest.approx(30)
+
+
 def test_corrupt_audio_has_stable_error_code() -> None:
     with pytest.raises(PreviewGenerationError) as error:
         inspect_audio(b"RIFF\x00\x00\x00\x00WAVEnot playable", extension=".wav")

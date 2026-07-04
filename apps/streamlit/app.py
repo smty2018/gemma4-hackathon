@@ -87,7 +87,7 @@ def render_upload_area() -> None:
         key=upload_widget_key(st.session_state),
         help=(
             "PNG/JPEG up to 10 MB, PDF up to 20 MB, "
-            "or WAV/MP3/M4A up to 15 MB and 60 seconds."
+            "or WAV/MP3/M4A up to 15 MB and 30 seconds."
         ),
     )
 

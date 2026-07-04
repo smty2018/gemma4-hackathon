@@ -6,7 +6,7 @@ from mutagen import MutagenError
 from ingestion.models import AudioPreview, PreviewGenerationError
 
 
-MAX_AUDIO_DURATION_SECONDS = 60
+MAX_AUDIO_DURATION_SECONDS = 30
 
 AUDIO_MIMES = {
     ".wav": "audio/wav",
