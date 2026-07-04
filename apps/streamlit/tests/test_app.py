@@ -4,6 +4,7 @@ import wave
 
 import pymupdf
 from PIL import Image
+import pytest
 from streamlit.testing.v1 import AppTest
 
 
@@ -68,9 +69,10 @@ def test_shell_renders_required_controls() -> None:
     assert app.session_state["extracted_facts"] == []
 
 
-def test_chat_message_uses_selected_preferences() -> None:
+@pytest.mark.parametrize("language", ["English", "Hindi", "Bengali"])
+def test_chat_message_uses_selected_preferences(language: str) -> None:
     app = load_app()
-    app.selectbox[0].select("Bengali")
+    app.selectbox[0].select(language)
     app.selectbox[1].select("Step by step")
     app.run()
     app.chat_input[0].set_value("What should I do next?").run()
@@ -78,7 +80,7 @@ def test_chat_message_uses_selected_preferences() -> None:
     messages = app.session_state["messages"]
     assert messages[-2] == {"role": "user", "content": "What should I do next?"}
     assert "step by step" in messages[-1]["content"]
-    assert "Bengali" in messages[-1]["content"]
+    assert language in messages[-1]["content"]
 
 
 def test_pdf_upload_shows_ready_state() -> None:
