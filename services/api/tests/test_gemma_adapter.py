@@ -345,6 +345,64 @@ def test_runtime_is_loaded_once_and_reused() -> None:
     assert len(runtime.calls) == 2
 
 
+def test_generate_stream_yields_chunks_from_the_runtime() -> None:
+    runtime = RecordingRuntime()
+    adapter = adapter_for(runtime)
+
+    chunks = list(
+        adapter.generate_stream(
+            GemmaRequest(prompt="Explain this notice.", max_new_tokens=64, temperature=0.2)
+        )
+    )
+
+    assert chunks == ["A ", "clear ", "answer"]
+    assert runtime.stream_calls[0]["messages"] == [
+        {
+            "role": "user",
+            "content": [{"type": "text", "text": "Explain this notice."}],
+        }
+    ]
+    assert runtime.stream_calls[0]["max_new_tokens"] == 64
+    assert runtime.stream_calls[0]["temperature"] == 0.2
+
+
+@pytest.mark.parametrize(
+    ("gemma_request", "code"),
+    [
+        (
+            GemmaRequest(prompt="hello", response_schema=ExtractedAmount),
+            "streaming_unsupported_with_structured_output",
+        ),
+        (
+            GemmaRequest(
+                prompt="hello",
+                tools=(
+                    {
+                        "type": "function",
+                        "function": {"name": "test", "parameters": {"type": "object"}},
+                    },
+                ),
+            ),
+            "streaming_unsupported_with_structured_output",
+        ),
+        (
+            GemmaRequest(prompt="hello", enable_thinking=True),
+            "streaming_unsupported_with_thinking",
+        ),
+    ],
+)
+def test_generate_stream_rejects_structured_or_thinking_requests(
+    gemma_request: GemmaRequest,
+    code: str,
+) -> None:
+    adapter = adapter_for(RecordingRuntime())
+
+    with pytest.raises(GemmaInputError) as error:
+        adapter.generate_stream(gemma_request)
+
+    assert error.value.code == code
+
+
 def test_transformers_runtime_uses_gemma4_multimodal_api_and_parse_response(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -452,3 +510,79 @@ def test_transformers_runtime_uses_gemma4_multimodal_api_and_parse_response(
     assert calls["generation_options"]["temperature"] == 1.0
     assert calls["generation_options"]["top_p"] == 0.95
     assert calls["generation_options"]["top_k"] == 64
+
+
+def test_transformers_runtime_streams_tokens_via_text_iterator_streamer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "hf_token", SecretStr("hf_test_token_for_unit_tests"))
+    calls: dict[str, Any] = {}
+
+    class FakeInputs(dict):
+        def to(self, device: str) -> "FakeInputs":
+            return self
+
+    class FakeProcessor:
+        tokenizer = object()
+
+        @classmethod
+        def from_pretrained(cls, model_id: str, **kwargs: Any) -> "FakeProcessor":
+            return cls()
+
+        def apply_chat_template(self, messages, **kwargs) -> FakeInputs:
+            calls["messages"] = messages
+            calls["template_options"] = kwargs
+            return FakeInputs(input_ids=object())
+
+    class FakeModel:
+        device = "cuda:0"
+
+        @classmethod
+        def from_pretrained(cls, model_id: str, **kwargs) -> "FakeModel":
+            return cls()
+
+        def eval(self) -> "FakeModel":
+            return self
+
+        def generate(self, **kwargs):
+            calls["generation_options"] = kwargs
+
+    class FakeStreamer:
+        def __init__(self, tokenizer: Any, *, skip_prompt: bool, skip_special_tokens: bool) -> None:
+            calls["streamer_tokenizer"] = tokenizer
+            calls["streamer_options"] = {
+                "skip_prompt": skip_prompt,
+                "skip_special_tokens": skip_special_tokens,
+            }
+
+        def __iter__(self):
+            return iter(["Pay ", "before ", "Friday."])
+
+    monkeypatch.setitem(
+        sys.modules,
+        "transformers",
+        SimpleNamespace(
+            AutoProcessor=FakeProcessor,
+            AutoModelForMultimodalLM=FakeModel,
+            TextIteratorStreamer=FakeStreamer,
+        ),
+    )
+    runtime = TransformersGemma4Runtime(DEFAULT_MODEL_ID)
+
+    chunks = list(
+        runtime.generate_stream(
+            messages=[{"role": "user", "content": "Explain this notice."}],
+            max_new_tokens=64,
+            temperature=0.0,
+        )
+    )
+
+    assert chunks == ["Pay ", "before ", "Friday."]
+    assert calls["streamer_tokenizer"] is FakeProcessor.tokenizer
+    assert calls["streamer_options"] == {
+        "skip_prompt": True,
+        "skip_special_tokens": True,
+    }
+    assert calls["generation_options"]["max_new_tokens"] == 64
+    assert calls["generation_options"]["do_sample"] is False
+    assert "streamer" in calls["generation_options"]
