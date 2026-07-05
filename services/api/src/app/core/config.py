@@ -22,6 +22,10 @@ class Settings(BaseSettings):
         default=None,
         validation_alias="SARVAM_API_KEY",
     )
+    hf_token: SecretStr | None = Field(
+        default=None,
+        validation_alias="HF_TOKEN",
+    )
 
     @property
     def allowed_origins(self) -> list[str]:

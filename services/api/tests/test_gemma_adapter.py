@@ -4,8 +4,9 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr
 
+from app.core.config import settings
 from app.inference.gemma import (
     DEFAULT_MODEL_ID,
     GemmaAdapter,
@@ -25,6 +26,8 @@ class RecordingRuntime:
         self.output = GemmaRuntimeOutput(text=response)
         self.calls: list[dict[str, Any]] = []
         self.error: Exception | None = None
+        self.stream_chunks: list[str] = ["A ", "clear ", "answer"]
+        self.stream_calls: list[dict[str, Any]] = []
 
     def generate(
         self,
@@ -47,6 +50,24 @@ class RecordingRuntime:
         if self.error:
             raise self.error
         return self.output
+
+    def generate_stream(
+        self,
+        *,
+        messages: list[dict[str, Any]],
+        max_new_tokens: int,
+        temperature: float,
+    ):
+        self.stream_calls.append(
+            {
+                "messages": messages,
+                "max_new_tokens": max_new_tokens,
+                "temperature": temperature,
+            }
+        )
+        if self.error:
+            raise self.error
+        yield from self.stream_chunks
 
 
 class ExtractedAmount(BaseModel):
@@ -327,6 +348,7 @@ def test_runtime_is_loaded_once_and_reused() -> None:
 def test_transformers_runtime_uses_gemma4_multimodal_api_and_parse_response(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(settings, "hf_token", SecretStr("hf_test_token_for_unit_tests"))
     calls: dict[str, Any] = {}
 
     class FakeInputs(dict):
@@ -339,8 +361,9 @@ def test_transformers_runtime_uses_gemma4_multimodal_api_and_parse_response(
 
     class FakeProcessor:
         @classmethod
-        def from_pretrained(cls, model_id: str) -> "FakeProcessor":
+        def from_pretrained(cls, model_id: str, **kwargs: Any) -> "FakeProcessor":
             calls["processor_model_id"] = model_id
+            calls["processor_options"] = kwargs
             return cls()
 
         def apply_chat_template(self, messages, **kwargs) -> FakeInputs:
@@ -412,7 +435,12 @@ def test_transformers_runtime_uses_gemma4_multimodal_api_and_parse_response(
     )
 
     assert calls["model_id"] == "google/gemma-4-E4B-it"
-    assert calls["model_options"] == {"device_map": "auto", "dtype": "auto"}
+    assert calls["processor_options"] == {"token": "hf_test_token_for_unit_tests"}
+    assert calls["model_options"] == {
+        "device_map": "auto",
+        "dtype": "auto",
+        "token": "hf_test_token_for_unit_tests",
+    }
     assert calls["template_options"]["tools"] == [tool_schema]
     assert calls["template_options"]["enable_thinking"] is True
     assert calls["skip_special_tokens"] is False

@@ -1,9 +1,9 @@
 import json
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from json import JSONDecodeError, JSONDecoder
 from pathlib import Path
-from threading import Lock
+from threading import Lock, Thread
 from typing import Any, Protocol
 
 from jsonschema import Draft202012Validator
@@ -92,6 +92,14 @@ class GemmaRuntime(Protocol):
         enable_thinking: bool,
     ) -> GemmaRuntimeOutput: ...
 
+    def generate_stream(
+        self,
+        *,
+        messages: list[dict[str, Any]],
+        max_new_tokens: int,
+        temperature: float,
+    ) -> Iterator[str]: ...
+
 
 class TransformersGemma4Runtime:
     def __init__(self, model_id: str) -> None:
@@ -103,12 +111,21 @@ class TransformersGemma4Runtime:
                 "Gemma runtime dependencies are not installed.",
             ) from error
 
+        from app.core.config import settings
+
+        token = (
+            settings.hf_token.get_secret_value()
+            if settings.hf_token is not None
+            else None
+        )
+
         try:
-            self._processor = AutoProcessor.from_pretrained(model_id)
+            self._processor = AutoProcessor.from_pretrained(model_id, token=token)
             self._model = AutoModelForMultimodalLM.from_pretrained(
                 model_id,
                 device_map="auto",
                 dtype="auto",
+                token=token,
             ).eval()
         except Exception as error:
             raise GemmaLoadError(
@@ -158,6 +175,52 @@ class TransformersGemma4Runtime:
         )
         parsed = self._processor.parse_response(decoded)
         return _runtime_output_from_parsed_response(parsed)
+
+    def generate_stream(
+        self,
+        *,
+        messages: list[dict[str, Any]],
+        max_new_tokens: int,
+        temperature: float,
+    ) -> Iterator[str]:
+        from transformers import TextIteratorStreamer
+
+        inputs = self._processor.apply_chat_template(
+            messages,
+            add_generation_prompt=True,
+            tokenize=True,
+            return_dict=True,
+            return_tensors="pt",
+        )
+        inputs = inputs.to(self._model.device)
+
+        tokenizer = getattr(self._processor, "tokenizer", self._processor)
+        streamer = TextIteratorStreamer(
+            tokenizer,
+            skip_prompt=True,
+            skip_special_tokens=True,
+        )
+
+        generation_options: dict[str, Any] = {
+            "max_new_tokens": max_new_tokens,
+            "do_sample": temperature > 0,
+            "streamer": streamer,
+        }
+        if temperature > 0:
+            generation_options["temperature"] = temperature
+            generation_options["top_p"] = 0.95
+            generation_options["top_k"] = 64
+
+        thread = Thread(
+            target=self._model.generate,
+            kwargs={**inputs, **generation_options},
+            daemon=True,
+        )
+        thread.start()
+        try:
+            yield from streamer
+        finally:
+            thread.join()
 
 
 RuntimeFactory = Callable[[str], GemmaRuntime]
@@ -229,6 +292,40 @@ class GemmaAdapter:
             structured=structured,
             thinking=runtime_output.thinking,
         )
+
+    def generate_stream(self, request: GemmaRequest) -> Iterator[str]:
+        if request.response_schema is not None or request.tools:
+            raise GemmaInputError(
+                "streaming_unsupported_with_structured_output",
+                "Token streaming only supports plain text responses, "
+                "not a response schema or tools.",
+            )
+        if request.enable_thinking:
+            raise GemmaInputError(
+                "streaming_unsupported_with_thinking",
+                "Token streaming does not support enable_thinking.",
+            )
+        self._validate_request(request)
+        messages = self._build_messages(request, schema=None)
+        runtime = self._get_runtime()
+
+        def _stream() -> Iterator[str]:
+            try:
+                yield from runtime.generate_stream(
+                    messages=messages,
+                    max_new_tokens=request.max_new_tokens,
+                    temperature=request.temperature,
+                )
+            except GemmaAdapterError:
+                raise
+            except Exception as error:
+                raise GemmaInferenceError(
+                    "gemma_inference_failed",
+                    "Gemma could not complete this request.",
+                    retryable=True,
+                ) from error
+
+        return _stream()
 
     def _get_runtime(self) -> GemmaRuntime:
         if self._runtime is not None:

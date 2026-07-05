@@ -10,7 +10,9 @@ requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115,<1",
     "jsonschema>=4.23,<5",
+    "pillow>=12,<13",
     "pydantic-settings>=2.7,<3",
+    "pymupdf>=1.26,<2",
     "python-multipart>=0.0.20,<1",
     "sarvamai>=0.1.28,<0.2",
     "uvicorn[standard]>=0.34,<1",
@@ -20,7 +22,6 @@ dependencies = [
 gemma = [
     "accelerate>=1.9,<2",
     "librosa>=0.11,<1",
-    "pillow>=11,<13",
     "sentencepiece>=0.2,<1",
     "soundfile>=0.13,<1",
     "torch>=2.7,<3",

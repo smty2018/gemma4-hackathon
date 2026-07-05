@@ -2,6 +2,9 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
+from app.schemas.explanation import DocumentExplanation
+from app.schemas.ocr import OcrDocumentResult
+
 
 class AnalysisStage(StrEnum):
     ACCEPTED = "accepted"
@@ -31,3 +34,11 @@ class EvidenceFact(BaseModel):
     page: int | None = None
     evidence_text: str
     confidence: float = Field(ge=0, le=1)
+
+
+class DocumentAnalysisResult(BaseModel):
+    document_name: str
+    content_type: str
+    model_id: str
+    ocr: OcrDocumentResult
+    explanation: DocumentExplanation
