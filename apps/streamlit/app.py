@@ -3,6 +3,7 @@ import os
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+import requests
 import streamlit as st
 
 from ingestion import (
@@ -33,7 +34,7 @@ from ui_config import (
 
 TEXT_DISPLAY_CHARACTERS = 10_000
 API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
-TTS_LANGUAGE_CODES = {
+SPEECH_LANGUAGE_CODES = {
     "English": "en-IN",
     "Hindi": "hi-IN",
     "Bengali": "bn-IN",
@@ -95,7 +96,7 @@ def cached_speech(text_value: str, language: str) -> bytes:
     payload = json.dumps(
         {
             "text": text_value,
-            "target_language_code": TTS_LANGUAGE_CODES[language],
+            "target_language_code": SPEECH_LANGUAGE_CODES[language],
         }
     ).encode("utf-8")
     request = Request(
@@ -112,6 +113,34 @@ def cached_speech(text_value: str, language: str) -> bytes:
     if not audio:
         raise RuntimeError("Speech service returned no audio")
     return audio
+
+
+@st.cache_data(show_spinner=False, ttl=3_600, max_entries=32)
+def cached_transcription(
+    content: bytes,
+    content_type: str,
+    language: str,
+) -> dict[str, object]:
+    try:
+        response = requests.post(
+            f"{API_BASE_URL}/api/v1/stt/transcribe",
+            files={"file": ("voice-question.wav", content, content_type)},
+            data={"language_code": SPEECH_LANGUAGE_CODES[language]},
+            timeout=90,
+        )
+        response.raise_for_status()
+        result = response.json()
+    except (requests.RequestException, ValueError) as error:
+        raise RuntimeError("Speech transcription unavailable") from error
+
+    transcript = str(result.get("transcript", "")).strip()
+    if not transcript:
+        raise RuntimeError("Speech service returned no transcript")
+    return {
+        "transcript": transcript,
+        "language_code": result.get("language_code"),
+        "language_probability": result.get("language_probability"),
+    }
 
 
 def render_language_gate() -> None:
@@ -420,6 +449,11 @@ def render_chat(language: str, explanation_style: str) -> None:
     if not prompt:
         return
 
+    queue_question(language, explanation_style, prompt)
+    st.rerun()
+
+
+def queue_question(language: str, explanation_style: str, prompt: str) -> None:
     add_message(st.session_state, "user", prompt)
     add_message(
         st.session_state,
@@ -430,7 +464,6 @@ def render_chat(language: str, explanation_style: str) -> None:
             style=style_label(explanation_style, language),
         ),
     )
-    st.rerun()
 
 
 def latest_assistant_reply() -> str | None:
@@ -440,7 +473,7 @@ def latest_assistant_reply() -> str | None:
     return None
 
 
-def render_voice_ui(language: str) -> None:
+def render_voice_ui(language: str, explanation_style: str) -> None:
     st.subheader(text(language, "voice_title"))
     st.caption(text(language, "voice_intro"))
 
@@ -473,6 +506,43 @@ def render_voice_ui(language: str) -> None:
                     ),
                 }
                 st.success(text(language, "recording_ready"), icon="🎙️")
+                try:
+                    with st.spinner(text(language, "transcribing")):
+                        transcription = cached_transcription(
+                            content,
+                            recording.type or "audio/wav",
+                            language,
+                        )
+                except RuntimeError:
+                    st.error(text(language, "stt_error"), icon="📝")
+                else:
+                    transcript = st.text_area(
+                        text(language, "transcript_label"),
+                        value=str(transcription["transcript"]),
+                        height=100,
+                        key=f"voice_transcript_{result.descriptor.content_hash[:12]}",
+                    )
+                    detected_language = transcription.get("language_code")
+                    if detected_language:
+                        st.caption(
+                            text(
+                                language,
+                                "detected_language",
+                                language_code=detected_language,
+                            )
+                        )
+                    st.session_state.voice_question.update(transcription)
+                    if st.button(
+                        text(language, "use_voice_question"),
+                        key="use_voice_question",
+                        type="primary",
+                        use_container_width=True,
+                    ):
+                        if transcript.strip():
+                            queue_question(language, explanation_style, transcript)
+                            st.rerun()
+                        else:
+                            st.error(text(language, "transcript_empty"))
 
     with output_column:
         st.markdown(f"#### {text(language, 'voice_reply_title')}")
@@ -538,7 +608,7 @@ def main() -> None:
     st.divider()
     render_extracted_facts(language)
     st.divider()
-    render_voice_ui(language)
+    render_voice_ui(language, explanation_style)
     st.divider()
     render_chat(language, explanation_style)
 

@@ -2,4 +2,5 @@ streamlit>=1.56,<1.57
 pillow>=12,<13
 pymupdf>=1.26,<2
 mutagen>=1.47,<2
+requests>=2.32,<3
 pytest>=8.3,<10
