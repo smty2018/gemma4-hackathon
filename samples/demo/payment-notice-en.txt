@@ -1,0 +1,8 @@
+DEMO ELECTRICITY PAYMENT NOTICE
+Consumer reference: DEMO-1024
+Billing period: June 2026
+Amount due: ₹1,250
+Due date: 10 July 2026
+Late fee: ₹100 after the due date
+Required action: Pay through the official electricity portal before the due date.
+This is synthetic hackathon data and does not belong to a real person.

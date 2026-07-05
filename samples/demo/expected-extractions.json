@@ -1,0 +1,35 @@
+[
+  {
+    "file": "payment-notice-en.txt",
+    "language": "English",
+    "document_label": "DEMO ELECTRICITY PAYMENT NOTICE",
+    "date_value": "10 July 2026",
+    "date_evidence": "Due date: 10 July 2026",
+    "amount_evidence": "Amount due: ₹1,250",
+    "summary": "This electricity notice requires payment of ₹1,250 by 10 July 2026.",
+    "action": "Pay ₹1,250 through the official portal by 10 July 2026.",
+    "follow_up": "Pay ₹1,250 through the official electricity portal by 10 July 2026."
+  },
+  {
+    "file": "payment-notice-hi.txt",
+    "language": "Hindi",
+    "document_label": "डेमो बिजली भुगतान सूचना",
+    "date_value": "10 जुलाई 2026",
+    "date_evidence": "अंतिम तिथि: 10 जुलाई 2026",
+    "amount_evidence": "देय राशि: ₹1,250",
+    "summary": "इस बिजली सूचना में ₹1,250 का भुगतान 10 जुलाई 2026 तक करना है।",
+    "action": "10 जुलाई 2026 तक आधिकारिक पोर्टल से ₹1,250 का भुगतान करें।",
+    "follow_up": "आधिकारिक बिजली पोर्टल से 10 जुलाई 2026 तक ₹1,250 का भुगतान करें।"
+  },
+  {
+    "file": "payment-notice-bn.txt",
+    "language": "Bengali",
+    "document_label": "ডেমো বিদ্যুৎ পেমেন্ট নোটিশ",
+    "date_value": "10 জুলাই 2026",
+    "date_evidence": "শেষ তারিখ: 10 জুলাই 2026",
+    "amount_evidence": "বকেয়া পরিমাণ: ₹1,250",
+    "summary": "এই বিদ্যুৎ নোটিশে 10 জুলাই 2026-এর মধ্যে ₹1,250 পরিশোধ করতে বলা হয়েছে।",
+    "action": "10 জুলাই 2026-এর মধ্যে সরকারি পোর্টালে ₹1,250 পরিশোধ করুন।",
+    "follow_up": "সরকারি বিদ্যুৎ পোর্টালে 10 জুলাই 2026-এর মধ্যে ₹1,250 পরিশোধ করুন।"
+  }
+]
