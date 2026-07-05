@@ -188,6 +188,32 @@ def test_matching_ignores_case_and_whitespace_differences() -> None:
 
 
 @pytest.mark.parametrize(
+    "normalized_value",
+    ["2026", "2026-06", "2026-07-10"],
+)
+def test_partial_iso_dates_are_accepted(normalized_value: str) -> None:
+    gemma = StubGemma(
+        [
+            page_payload(
+                "Billing period: June 2026",
+                dates=[
+                    {
+                        "value": "June 2026",
+                        "normalized_value": normalized_value,
+                        "evidence_text": "Billing period: June 2026",
+                        "confidence": 0.9,
+                    }
+                ],
+            )
+        ]
+    )
+
+    result = OcrPipeline(gemma).extract([OcrPageInput(page=1, image=object())])
+
+    assert result.dates[0].normalized_value == normalized_value
+
+
+@pytest.mark.parametrize(
     ("pages", "code", "page"),
     [
         ([], "ocr_pages_required", None),
@@ -281,6 +307,17 @@ def test_invalid_structured_result_is_normalized() -> None:
                     "value": "next Friday",
                     "normalized_value": "next-Friday",
                     "evidence_text": "next Friday",
+                    "confidence": 0.8,
+                }
+            ],
+            [],
+        ),
+        (
+            [
+                {
+                    "value": "some month",
+                    "normalized_value": "2026-13",
+                    "evidence_text": "some month",
                     "confidence": 0.8,
                 }
             ],

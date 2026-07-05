@@ -1,0 +1,9 @@
+DEMO CITY MUNICIPAL CORPORATION - PROPERTY TAX BILL
+Assessee number: PROP-77821
+Ward: 12
+Assessment year: 2026-27
+Tax amount due: ₹8,400
+Due date: 30 September 2026
+Late payment penalty: 2% per month after the due date
+Required action: Pay online through the city property tax portal before the due date.
+This is synthetic hackathon data and does not belong to a real person.

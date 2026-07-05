@@ -1,0 +1,8 @@
+DEMO LIFE INSURANCE PREMIUM REMINDER
+Policy number: POL-55639390
+Policyholder: Demo Customer
+Premium amount due: ₹4,500
+Due date: 15 August 2026
+Grace period: 30 days after the due date
+Required action: Pay the premium before the due date to keep the policy active; unpaid premiums after the grace period will lapse the policy.
+This is synthetic hackathon data and does not belong to a real person.

@@ -1,0 +1,9 @@
+DEMO CLINIC PRESCRIPTION AND ACKNOWLEDGEMENT
+Clinic reference: RX-90213
+Patient reference: DEMO-PATIENT-1024
+Date issued: 3 July 2026
+Medicines prescribed: Tablet Demozole 500mg, twice daily after meals, for 5 days
+Follow-up date: 10 July 2026
+Required action: Collect the medicine from the clinic pharmacy within 7 days and complete the full course as prescribed.
+Acknowledgement: Received by patient's representative on 3 July 2026.
+This is synthetic hackathon data and does not belong to a real person.

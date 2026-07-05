@@ -76,7 +76,16 @@ class _DatePayload(BaseModel):
     def normalized_date_must_be_iso(cls, value: str | None) -> str | None:
         if value is None:
             return None
-        date.fromisoformat(value)
+        if not re.fullmatch(r"\d{4}(-\d{2}(-\d{2})?)?", value):
+            raise ValueError(
+                "normalized date must be an ISO 8601 year, year-month, or full date"
+            )
+        if len(value) == 10:
+            date.fromisoformat(value)
+        elif len(value) == 7:
+            month = int(value[5:7])
+            if not 1 <= month <= 12:
+                raise ValueError("normalized date month must be between 01 and 12")
         return value
 
 

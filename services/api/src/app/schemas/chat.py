@@ -4,7 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.schemas.explanation import SourceEvidence
+from app.schemas.explanation import DocumentExplanation, SourceEvidence
 
 
 class ChatRole(StrEnum):
@@ -40,3 +40,13 @@ class GroundedChatAnswer(BaseModel):
     document_sources: list[SourceEvidence] = Field(default_factory=list, max_length=20)
     tool_sources: list[ToolResultEvidence] = Field(default_factory=list, max_length=20)
     confidence: float = Field(ge=0, le=1)
+
+
+class ChatAskRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    question: str = Field(min_length=1, max_length=2_000)
+    document: DocumentExplanation
+    history: list[ChatTurn] = Field(default_factory=list, max_length=20)
+    language: str = Field(default="English", min_length=2, max_length=32)
+    explanation_style: str = Field(default="Simple", min_length=1, max_length=100)
