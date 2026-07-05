@@ -25,6 +25,7 @@ def test_initialize_memory_sets_all_document_scoped_defaults() -> None:
     assert state["messages"] == [{"role": "assistant", "content": WELCOME_MESSAGE}]
     assert state["active_document"] is None
     assert state["extracted_facts"] == []
+    assert state["tool_results"] == []
     assert upload_widget_key(state) == "document_upload_0"
 
 
@@ -32,6 +33,7 @@ def test_activate_document_stores_safe_metadata_and_resets_context() -> None:
     state = fresh_state()
     add_message(state, "user", "Old question")
     state["extracted_facts"] = [{"label": "Old", "value": "Fact"}]
+    state["tool_results"] = [{"tool": "old"}]
 
     changed = activate_document(
         state,
@@ -46,6 +48,7 @@ def test_activate_document_stores_safe_metadata_and_resets_context() -> None:
     assert state["active_document"]["size_bytes"] == 14
     assert len(state["active_document"]["document_id"]) == 16
     assert state["extracted_facts"] == []
+    assert state["tool_results"] == []
     assert "Old question" not in [message["content"] for message in state["messages"]]
 
 
@@ -83,11 +86,13 @@ def test_clear_active_document_removes_document_scoped_memory() -> None:
         content=b"image",
     )
     replace_extracted_facts(state, [{"label": "Amount", "value": "100"}])
+    state["tool_results"] = [{"tool": "calculator"}]
 
     clear_active_document(state)
 
     assert state["active_document"] is None
     assert state["extracted_facts"] == []
+    assert state["tool_results"] == []
     assert state["messages"] == [{"role": "assistant", "content": WELCOME_MESSAGE}]
 
 
@@ -104,6 +109,7 @@ def test_reset_memory_clears_state_and_rotates_upload_widget() -> None:
 
     assert state["active_document"] is None
     assert state["extracted_facts"] == []
+    assert state["tool_results"] == []
     assert state["messages"] == [{"role": "assistant", "content": WELCOME_MESSAGE}]
     assert upload_widget_key(state) == "document_upload_1"
 

@@ -1,4 +1,5 @@
 """Validated API and agent contracts."""
+from app.schemas.chat import ChatRole, ChatTurn, GroundedChatAnswer, ToolResultEvidence
 from app.schemas.explanation import (
     ActionUrgency,
     DocumentExplanation,
@@ -21,11 +22,14 @@ from app.schemas.ocr import (
 
 __all__ = [
     "ActionUrgency",
+    "ChatRole",
+    "ChatTurn",
     "DocumentExplanation",
     "EvidenceKind",
     "ExplanationFact",
     "ExplanationSummary",
     "ExplanationWarning",
+    "GroundedChatAnswer",
     "OcrAmount",
     "OcrDate",
     "OcrDocumentResult",
@@ -34,5 +38,6 @@ __all__ = [
     "OcrSource",
     "RequiredAction",
     "SourceEvidence",
+    "ToolResultEvidence",
     "WarningSeverity",
 ]
