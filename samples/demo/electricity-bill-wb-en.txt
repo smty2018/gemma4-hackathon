@@ -1,0 +1,36 @@
+WEST BENGAL STATE ELECTRICITY DISTRIBUTION COMPANY LTD.
+BILL - Internet Copy
+Helpline Number (24x7): 19121
+
+Consumer: M/S DEMO CONSUMER [REDACTED]
+Address: [REDACTED], Pin - 7111XX
+Invoice Date: 02.06.2023
+Consumer Id: DEMO-XXXX
+Tariff Class: B(I-R)
+Installation No: XXXX6726
+Bill Month: JUN 2023
+Connected Load: 7.05 KVA
+Meter No: SF04XXXX N
+Previous Reading: 6153.00
+Present Reading: 6239.00
+Units consumed: 86.00
+
+Breakup of Charges (Rs.):
+Energy Charge: 539.22
+Fixed/Demand Charge: 352.50
+Rental Charge: 50.00
+Electricity Duty Charge: 0.00
+Outstanding amount (Rs.): 1037.48
+
+Total Charges (Rs.): 941.72
+Timely Payment Rebate (Rs.): 8.91
+Due Date: 12.06.2023
+Amount due within Due Date (Rs.): 1971.00
+Amount due after Due Date (Rs.): 1980.00
+Amount payable through e-payment within Due Date: 1962.00
+
+Payment may be made using RTGS/NEFT to account no. [REDACTED] with IFSC code [REDACTED], a subsidy from West Bengal Govt.
+
+# Please ignore Outstanding amount if the payment has already been made and help us to correct our records by showing the money receipt to our billing section.
+
+This is synthetic demo data with all personal and account identifiers redacted. It does not belong to a real person.
