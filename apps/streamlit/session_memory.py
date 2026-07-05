@@ -33,12 +33,16 @@ class ExtractedFact(TypedDict, total=False):
 SessionState = MutableMapping[str, Any]
 
 
-def initial_messages() -> list[ChatMessage]:
-    return [{"role": "assistant", "content": WELCOME_MESSAGE}]
+def initial_messages(welcome_message: str = WELCOME_MESSAGE) -> list[ChatMessage]:
+    return [{"role": "assistant", "content": welcome_message}]
 
 
-def initialize_memory(state: SessionState) -> None:
-    state.setdefault("messages", initial_messages())
+def initialize_memory(
+    state: SessionState,
+    *,
+    welcome_message: str = WELCOME_MESSAGE,
+) -> None:
+    state.setdefault("messages", initial_messages(welcome_message))
     state.setdefault("active_document", None)
     state.setdefault("extracted_facts", [])
     state.setdefault("tool_results", [])
@@ -79,6 +83,8 @@ def activate_document(
     filename: str,
     content_type: str,
     content: bytes,
+    welcome_message: str = WELCOME_MESSAGE,
+    active_document_message: str | None = None,
 ) -> bool:
     """Set the active document and return whether the document changed."""
 
@@ -94,20 +100,25 @@ def activate_document(
     state["active_document"] = document
     state["extracted_facts"] = []
     state["tool_results"] = []
-    state["messages"] = initial_messages()
+    state["messages"] = initial_messages(welcome_message)
     add_message(
         state,
         "assistant",
-        f"{document['filename']} is now the active document. What would you like to know?",
+        active_document_message
+        or f"{document['filename']} is now the active document. What would you like to know?",
     )
     return True
 
 
-def clear_active_document(state: SessionState) -> None:
+def clear_active_document(
+    state: SessionState,
+    *,
+    welcome_message: str = WELCOME_MESSAGE,
+) -> None:
     state["active_document"] = None
     state["extracted_facts"] = []
     state["tool_results"] = []
-    state["messages"] = initial_messages()
+    state["messages"] = initial_messages(welcome_message)
 
 
 def replace_extracted_facts(
@@ -118,8 +129,12 @@ def replace_extracted_facts(
     state["extracted_facts"] = [dict(fact) for fact in facts]
 
 
-def reset_memory(state: SessionState) -> None:
-    state["messages"] = initial_messages()
+def reset_memory(
+    state: SessionState,
+    *,
+    welcome_message: str = WELCOME_MESSAGE,
+) -> None:
+    state["messages"] = initial_messages(welcome_message)
     state["active_document"] = None
     state["extracted_facts"] = []
     state["tool_results"] = []

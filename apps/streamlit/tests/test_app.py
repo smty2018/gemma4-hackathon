@@ -7,6 +7,8 @@ from PIL import Image
 import pytest
 from streamlit.testing.v1 import AppTest
 
+from ui_config import style_label, text
+
 
 APP_FILE = Path(__file__).parents[1] / "app.py"
 
@@ -48,8 +50,30 @@ def wav_bytes() -> bytes:
     return output.getvalue()
 
 
-def load_app() -> AppTest:
+def load_language_gate() -> AppTest:
     return AppTest.from_file(str(APP_FILE), default_timeout=10).run()
+
+
+def load_app(language: str = "English") -> AppTest:
+    app = load_language_gate()
+    app.selectbox[0].select(language)
+    app.button[0].click().run()
+    return app
+
+
+def button_with_label(app: AppTest, label: str):
+    return next(button for button in app.button if button.label == label)
+
+
+def test_language_gate_is_the_only_initial_screen() -> None:
+    app = load_language_gate()
+
+    assert not app.exception
+    assert "Choose your language" in app.title[0].value
+    assert app.selectbox[0].label == "Language · भाषा · ভাষা"
+    assert app.button[0].label == "Continue · आगे बढ़ें · এগিয়ে যান"
+    assert len(app.file_uploader) == 0
+    assert len(app.chat_input) == 0
 
 
 def test_shell_renders_required_controls() -> None:
@@ -58,29 +82,54 @@ def test_shell_renders_required_controls() -> None:
     assert not app.exception
     assert app.title[0].value == "Understand your document"
     assert [selectbox.label for selectbox in app.selectbox] == [
-        "Language",
         "Explanation style",
     ]
     assert len(app.file_uploader) == 1
     assert app.file_uploader[0].label == "Upload an image, PDF, or audio recording"
     assert len(app.chat_input) == 1
-    assert app.button[0].label == "Reset session"
+    assert button_with_label(app, "Reset session")
     assert app.session_state["active_document"] is None
     assert app.session_state["extracted_facts"] == []
 
 
 @pytest.mark.parametrize("language", ["English", "Hindi", "Bengali"])
 def test_chat_message_uses_selected_preferences(language: str) -> None:
-    app = load_app()
-    app.selectbox[0].select(language)
-    app.selectbox[1].select("Step by step")
-    app.run()
+    app = load_app(language)
+    app.selectbox[0].select("step_by_step").run()
     app.chat_input[0].set_value("What should I do next?").run()
 
     messages = app.session_state["messages"]
     assert messages[-2] == {"role": "user", "content": "What should I do next?"}
-    assert "step by step" in messages[-1]["content"]
-    assert language in messages[-1]["content"]
+    assert messages[-1]["content"] == text(
+        language,
+        "queued_response",
+        style=style_label("step_by_step", language),
+    )
+
+
+@pytest.mark.parametrize(
+    ("language", "title", "upload_label", "reset_label"),
+    [
+        ("Hindi", "अपने दस्तावेज़ को समझें", "चित्र, PDF या ऑडियो रिकॉर्डिंग अपलोड करें", "सत्र रीसेट करें"),
+        ("Bengali", "আপনার নথি বুঝুন", "ছবি, PDF বা অডিও রেকর্ডিং আপলোড করুন", "সেশন রিসেট করুন"),
+    ],
+)
+def test_page_chrome_uses_only_selected_language(
+    language: str,
+    title: str,
+    upload_label: str,
+    reset_label: str,
+) -> None:
+    app = load_app(language)
+
+    assert app.title[0].value == title
+    assert app.file_uploader[0].label == upload_label
+    assert button_with_label(app, reset_label)
+    assert all(item.value != "Understand your document" for item in app.title)
+    assert all(
+        uploader.label != "Upload an image, PDF, or audio recording"
+        for uploader in app.file_uploader
+    )
 
 
 def test_pdf_upload_shows_ready_state() -> None:
@@ -93,7 +142,7 @@ def test_pdf_upload_shows_ready_state() -> None:
 
     assert not app.exception
     assert app.success[0].value == "Ready: notice.pdf"
-    assert any("Pdf" in caption.value for caption in app.caption)
+    assert any("PDF" in caption.value for caption in app.caption)
     assert app.session_state["active_document"]["filename"] == "notice.pdf"
     assert app.session_state["active_document"]["content_type"] == "application/pdf"
     assert any("1 pages" in caption.value for caption in app.caption)
@@ -155,7 +204,7 @@ def test_reset_button_clears_document_facts_and_chat() -> None:
     ]
     app.chat_input[0].set_value("What is due?").run()
 
-    app.button[0].click().run()
+    button_with_label(app, "Reset session").click().run()
 
     assert app.session_state["active_document"] is None
     assert app.session_state["extracted_facts"] == []
@@ -172,7 +221,9 @@ def test_invalid_file_does_not_become_active_document() -> None:
     ).run()
 
     assert app.session_state["active_document"] is None
-    assert any("do not match" in error.value for error in app.error)
+    assert app.error[0].value == (
+        "The file could not be processed. Check its format, size, and contents."
+    )
 
 
 def test_audio_upload_renders_playback_metadata() -> None:
