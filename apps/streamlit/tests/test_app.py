@@ -86,6 +86,9 @@ def test_shell_renders_required_controls() -> None:
     ]
     assert len(app.file_uploader) == 1
     assert app.file_uploader[0].label == "Upload an image, PDF, or audio recording"
+    assert app.get("audio_input")[0].label == "Record a voice question"
+    assert any(item.value == "2. Speak or listen" for item in app.subheader)
+    assert button_with_label(app, "Play latest answer")
     assert len(app.chat_input) == 1
     assert button_with_label(app, "Reset session")
     assert app.session_state["active_document"] is None
@@ -108,22 +111,36 @@ def test_chat_message_uses_selected_preferences(language: str) -> None:
 
 
 @pytest.mark.parametrize(
-    ("language", "title", "upload_label", "reset_label"),
+    ("language", "title", "upload_label", "voice_label", "reset_label"),
     [
-        ("Hindi", "अपने दस्तावेज़ को समझें", "चित्र, PDF या ऑडियो रिकॉर्डिंग अपलोड करें", "सत्र रीसेट करें"),
-        ("Bengali", "আপনার নথি বুঝুন", "ছবি, PDF বা অডিও রেকর্ডিং আপলোড করুন", "সেশন রিসেট করুন"),
+        (
+            "Hindi",
+            "अपने दस्तावेज़ को समझें",
+            "चित्र, PDF या ऑडियो रिकॉर्डिंग अपलोड करें",
+            "आवाज़ में सवाल रिकॉर्ड करें",
+            "सत्र रीसेट करें",
+        ),
+        (
+            "Bengali",
+            "আপনার নথি বুঝুন",
+            "ছবি, PDF বা অডিও রেকর্ডিং আপলোড করুন",
+            "কণ্ঠে প্রশ্ন রেকর্ড করুন",
+            "সেশন রিসেট করুন",
+        ),
     ],
 )
 def test_page_chrome_uses_only_selected_language(
     language: str,
     title: str,
     upload_label: str,
+    voice_label: str,
     reset_label: str,
 ) -> None:
     app = load_app(language)
 
     assert app.title[0].value == title
     assert app.file_uploader[0].label == upload_label
+    assert app.get("audio_input")[0].label == voice_label
     assert button_with_label(app, reset_label)
     assert all(item.value != "Understand your document" for item in app.title)
     assert all(
@@ -202,12 +219,14 @@ def test_reset_button_clears_document_facts_and_chat() -> None:
     app.session_state["extracted_facts"] = [
         {"label": "Due date", "value": "10 July"}
     ]
+    app.session_state["voice_question"] = {"content": b"recording"}
     app.chat_input[0].set_value("What is due?").run()
 
     button_with_label(app, "Reset session").click().run()
 
     assert app.session_state["active_document"] is None
     assert app.session_state["extracted_facts"] == []
+    assert app.session_state["voice_question"] is None
     assert len(app.session_state["messages"]) == 1
     assert app.file_uploader[0].value is None
 

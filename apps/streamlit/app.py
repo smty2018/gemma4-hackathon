@@ -1,3 +1,8 @@
+import json
+import os
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
+
 import streamlit as st
 
 from ingestion import (
@@ -14,6 +19,7 @@ from session_memory import (
     initialize_memory,
     reset_memory,
     upload_widget_key,
+    voice_widget_key,
 )
 from ui_config import (
     LANGUAGES,
@@ -26,6 +32,12 @@ from ui_config import (
 
 
 TEXT_DISPLAY_CHARACTERS = 10_000
+API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
+TTS_LANGUAGE_CODES = {
+    "English": "en-IN",
+    "Hindi": "hi-IN",
+    "Bengali": "bn-IN",
+}
 
 
 def hide_streamlit_chrome() -> None:
@@ -76,6 +88,30 @@ def cached_ingestion(
         content_type=content_type,
         content=content,
     )
+
+
+@st.cache_data(show_spinner=False, ttl=3_600, max_entries=16)
+def cached_speech(text_value: str, language: str) -> bytes:
+    payload = json.dumps(
+        {
+            "text": text_value,
+            "target_language_code": TTS_LANGUAGE_CODES[language],
+        }
+    ).encode("utf-8")
+    request = Request(
+        f"{API_BASE_URL}/api/v1/tts/stream",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=90) as response:
+            audio = response.read()
+    except (HTTPError, URLError, TimeoutError) as error:
+        raise RuntimeError("Speech service unavailable") from error
+    if not audio:
+        raise RuntimeError("Speech service returned no audio")
+    return audio
 
 
 def render_language_gate() -> None:
@@ -397,6 +433,69 @@ def render_chat(language: str, explanation_style: str) -> None:
     st.rerun()
 
 
+def latest_assistant_reply() -> str | None:
+    for message in reversed(st.session_state.messages[1:]):
+        if message["role"] == "assistant" and message["content"].strip():
+            return message["content"]
+    return None
+
+
+def render_voice_ui(language: str) -> None:
+    st.subheader(text(language, "voice_title"))
+    st.caption(text(language, "voice_intro"))
+
+    input_column, output_column = st.columns(2, gap="large")
+    with input_column:
+        recording = st.audio_input(
+            text(language, "record_label"),
+            sample_rate=16_000,
+            key=voice_widget_key(st.session_state),
+            help=text(language, "record_help"),
+        )
+        if recording is not None:
+            content = recording.getvalue()
+            try:
+                result = cached_ingestion(
+                    "voice-question.wav",
+                    recording.type or "audio/wav",
+                    content,
+                )
+            except (UploadValidationError, PreviewGenerationError):
+                st.session_state.voice_question = None
+                st.error(text(language, "voice_error"), icon="⚠️")
+            else:
+                preview = result.audio_preview
+                st.session_state.voice_question = {
+                    "content": content,
+                    "content_type": recording.type or "audio/wav",
+                    "duration_seconds": (
+                        preview.duration_seconds if preview is not None else None
+                    ),
+                }
+                st.success(text(language, "recording_ready"), icon="🎙️")
+
+    with output_column:
+        st.markdown(f"#### {text(language, 'voice_reply_title')}")
+        st.caption(text(language, "voice_reply_help"))
+        reply = latest_assistant_reply()
+        play_reply = st.button(
+            text(language, "hear_latest"),
+            key="hear_latest_reply",
+            disabled=reply is None,
+            use_container_width=True,
+        )
+        if reply is None:
+            st.info(text(language, "no_reply"))
+        elif play_reply:
+            try:
+                with st.spinner(text(language, "speaking")):
+                    speech = cached_speech(reply, language)
+            except RuntimeError:
+                st.error(text(language, "speech_error"), icon="🔊")
+            else:
+                st.audio(speech, format="audio/mpeg", autoplay=True)
+
+
 def main() -> None:
     selected_language = st.session_state.get("ui_language")
     page_title = (
@@ -438,6 +537,8 @@ def main() -> None:
 
     st.divider()
     render_extracted_facts(language)
+    st.divider()
+    render_voice_ui(language)
     st.divider()
     render_chat(language, explanation_style)
 

@@ -46,6 +46,7 @@ def initialize_memory(
     state.setdefault("active_document", None)
     state.setdefault("extracted_facts", [])
     state.setdefault("tool_results", [])
+    state.setdefault("voice_question", None)
     state.setdefault("upload_revision", 0)
 
 
@@ -100,6 +101,7 @@ def activate_document(
     state["active_document"] = document
     state["extracted_facts"] = []
     state["tool_results"] = []
+    state["voice_question"] = None
     state["messages"] = initial_messages(welcome_message)
     add_message(
         state,
@@ -138,7 +140,12 @@ def reset_memory(
     state["active_document"] = None
     state["extracted_facts"] = []
     state["tool_results"] = []
+    state["voice_question"] = None
     state["upload_revision"] = int(state.get("upload_revision", 0)) + 1
+
+
+def voice_widget_key(state: SessionState) -> str:
+    return f"voice_question_{state['upload_revision']}"
 
 
 def format_file_size(size_bytes: int) -> str:
