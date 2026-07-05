@@ -12,6 +12,7 @@ dependencies = [
     "jsonschema>=4.23,<5",
     "pydantic-settings>=2.7,<3",
     "python-multipart>=0.0.20,<1",
+    "sarvamai>=0.1.28,<0.2",
     "uvicorn[standard]>=0.34,<1",
 ]
 
